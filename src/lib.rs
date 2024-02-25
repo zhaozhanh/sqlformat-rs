@@ -22,6 +22,12 @@ pub fn format(query: &str, params: &QueryParams, options: FormatOptions) -> Stri
     formatter::format(&tokens, params, options)
 }
 
+/// Split a SQL string into individual queries.
+pub fn split(query: &str) -> Vec<String> {
+    let tokens = tokenizer::tokenize(query, false);
+    formatter::split(&tokens)
+}
+
 /// Options for controlling how the library formats SQL
 #[derive(Debug, Clone, Copy)]
 pub struct FormatOptions {
@@ -1400,6 +1406,44 @@ mod tests {
     }
 
     #[test]
+    fn it_formats_line_comments_followed_by_comma2() {
+        let input = indoc!(
+            "
+            SELECT a, --comment
+            'a\\b\\c'"
+        );
+        let options = FormatOptions::default();
+        let expected = indoc!(
+            "
+            SELECT
+              a, --comment
+              'a\\b\\c'"
+        );
+
+        println!("result: {:?}", format(input, &QueryParams::None, options));
+        assert_eq!(format(input, &QueryParams::None, options), expected);
+    }
+
+    #[test]
+    fn it_formats_block_comments_followed_by_comma() {
+        let input = indoc!(
+            "
+            SELECT a, /* block comment */
+            'a\\b\\c'"
+        );
+        let options = FormatOptions::default();
+        let expected = indoc!(
+            "
+            SELECT
+              a, /* block comment */
+              'a\\b\\c'"
+        );
+
+        println!("result: {:?}", format(input, &QueryParams::None, options));
+        assert_eq!(format(input, &QueryParams::None, options), expected);
+    }
+
+    #[test]
     fn it_formats_line_comments_followed_by_close_paren() {
         let input = "SELECT ( a --comment\n )";
         let options = FormatOptions::default();
@@ -1503,5 +1547,25 @@ mod tests {
         );
 
         assert_eq!(format(input, &QueryParams::None, options), expected);
+    }
+
+    #[test]
+    fn it_split() {
+        let input = "SELECT * FROM t -- comment\n;limit $num  ;     ";
+        let expected = vec!["SELECT * FROM t -- comment\n;", "limit $num  ;"];
+
+        // let result = split(input);
+        // println!("result: {:?}", result);
+        assert_eq!(split(input), expected);
+    }
+
+    #[test]
+    fn it_split_no_delimiter() {
+        let input = "SELECT * FROM t -- comment;limit $num";
+        let expected = vec!["SELECT * FROM t -- comment;limit $num"];
+
+        // let result = split(input);
+        // println!("result: {:?}", result);
+        assert_eq!(split(input), expected);
     }
 }

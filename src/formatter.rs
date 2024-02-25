@@ -6,6 +6,59 @@ use crate::{FormatOptions, QueryParams};
 use itertools::Itertools;
 use std::borrow::Cow;
 
+pub(crate) fn split(tokens: &[Token<'_>]) -> Vec<String> {
+    let mut stataments: Vec<String> = Vec::new();
+    let mut formatter = Formatter::new(tokens, &QueryParams::None, FormatOptions::default());
+    let mut formatted_query = String::new();
+    for (index, token) in tokens.iter().enumerate() {
+        formatter.index = index;
+
+        if token.kind == TokenKind::Whitespace {
+            formatted_query.push_str(token.value);
+        } else if token.kind == TokenKind::LineComment {
+            formatted_query.push_str(token.value);
+        } else if token.kind == TokenKind::BlockComment {
+            formatted_query.push_str(token.value);
+        } else if token.kind == TokenKind::ReservedTopLevel {
+            formatted_query.push_str(token.value);
+            formatter.previous_reserved_word = Some(token);
+        } else if token.kind == TokenKind::ReservedTopLevelNoIndent {
+            formatted_query.push_str(token.value);
+            formatter.previous_reserved_word = Some(token);
+        } else if token.kind == TokenKind::ReservedNewline {
+            formatted_query.push_str(token.value);
+            formatter.previous_reserved_word = Some(token);
+        } else if token.kind == TokenKind::Reserved {
+            formatted_query.push_str(token.value);
+            formatter.previous_reserved_word = Some(token);
+        } else if token.kind == TokenKind::OpenParen {
+            formatted_query.push_str(token.value);
+        } else if token.kind == TokenKind::CloseParen {
+            formatted_query.push_str(token.value);
+        } else if token.kind == TokenKind::Placeholder {
+            formatted_query.push_str(token.value);
+        } else if token.value == "," {
+            formatted_query.push_str(token.value);
+        } else if token.value == ":" {
+            formatted_query.push_str(token.value);
+        } else if token.value == "." {
+            formatted_query.push_str(token.value);
+        } else if token.value == ";" {
+            formatted_query.push_str(token.value);
+            let statement = formatted_query.to_string();
+            stataments.push(statement.trim().to_string());
+            formatted_query.clear();
+        } else {
+            formatted_query.push_str(token.value);
+        }
+    }
+    if !formatted_query.trim().is_empty() {
+        let statement = formatted_query.to_string();
+        stataments.push(statement);
+    }
+    stataments
+}
+
 pub(crate) fn format(tokens: &[Token<'_>], params: &QueryParams, options: FormatOptions) -> String {
     let mut formatter = Formatter::new(tokens, params, options);
     let mut formatted_query = String::new();
@@ -80,7 +133,16 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_block_comment(&self, token: &Token<'_>, query: &mut String) {
-        self.add_new_line(query);
+        // when block comment is after comma, then no new line before comment
+        let mut new_line_before = true;
+        if let Some(previous_nwp_token) = self.previous_not_whitespace_token() {
+            if previous_nwp_token.value == "," {
+                new_line_before = false;
+            }
+        }
+        if new_line_before {
+            self.add_new_line(query);
+        }
         query.push_str(&self.indent_comment(token.value));
         self.add_new_line(query);
     }
@@ -187,6 +249,15 @@ impl<'a> Formatter<'a> {
         {
             return;
         }
+        // if next not white space token is line comment or block comment, then return
+        if let Some(next_nwp_token) = self.next_not_whitespace_token() {
+            if matches!(
+                next_nwp_token.kind,
+                TokenKind::LineComment | TokenKind::BlockComment
+            ) {
+                return;
+            }
+        }
         self.add_new_line(query);
     }
 
@@ -267,5 +338,49 @@ impl<'a> Formatter<'a> {
         } else {
             None
         }
+    }
+
+    fn previous_n_token(&self, count: usize) -> Option<&Token<'_>> {
+        let index = self.index.checked_sub(count);
+        if let Some(index) = index {
+            self.tokens.get(index)
+        } else {
+            None
+        }
+    }
+
+    fn previous_not_whitespace_token(&self) -> Option<&Token<'_>> {
+        let mut count = 1;
+        let mut previous = self.previous_n_token(count);
+        while let Some(token) = previous {
+            if token.kind != TokenKind::Whitespace {
+                return Some(token);
+            }
+            count += 1;
+            previous = self.previous_n_token(count);
+        }
+        None
+    }
+
+    fn next_n_token(&self, count: usize) -> Option<&Token<'_>> {
+        let index = self.index.checked_add(count);
+        if let Some(index) = index {
+            self.tokens.get(index)
+        } else {
+            None
+        }
+    }
+
+    fn next_not_whitespace_token(&self) -> Option<&Token<'_>> {
+        let mut count = 1;
+        let mut next = self.next_n_token(count);
+        while let Some(token) = next {
+            if token.kind != TokenKind::Whitespace {
+                return Some(token);
+            }
+            count += 1;
+            next = self.next_n_token(count);
+        }
+        None
     }
 }
